@@ -26,6 +26,8 @@ public class mxPathParser
 	private double yCenter = 0;
 	private double lastMoveX = 0;
 	private double lastMoveY = 0;
+	// Boolean to control when a quadratic curve has just started
+	private boolean curveStarted = false;
 
 	/**
 	 * @param svgPath the "d" attribute of a SVG path element 
@@ -45,6 +47,8 @@ public class mxPathParser
 
 		this.pathEl = doc.createElement("path");
 		char prevPathType = 'm';
+		// Delete double spaces
+		svgPath = svgPath.replaceAll("\\s{2,}", " ");
 		
 		do
 		{
@@ -80,6 +84,8 @@ public class mxPathParser
 			if (nextPartStartIndex == -1)
 			{
 				currPathString = svgPath;
+				// When it's the last path, we set curveStarted to false to make sure that xCenter and yCenter are currentX and currentY respectively
+				curveStarted = false;
 			}
 			else
 			{
@@ -89,6 +95,11 @@ public class mxPathParser
 			if (!hasLetter)
 			{
 				currPathString = currPathType + " " + currPathString;
+			}
+
+			// If the curve is finished, set curveStarted to false
+			if(!"Tt".contains(String.valueOf(currPathType)) && curveStarted){
+				curveStarted = false;
 			}
 			
 			switch (currPathType)
@@ -166,7 +177,7 @@ public class mxPathParser
 			}
 			else
 			{
-				svgPath = svgPath.substring(nextPartStartIndex, svgPath.length());
+				svgPath = svgPath.substring(nextPartStartIndex);
 			}
 		} 
 		while (svgPath.length() > 0);
@@ -400,8 +411,15 @@ public class mxPathParser
 		double x = Shape2Xml.getPathParam(path, 1);
 		double y = Shape2Xml.getPathParam(path, 2);
 
-		xCenter = currentX * 2 - xCenter;
-		yCenter = currentY * 2 - yCenter;
+		if(!curveStarted){
+			xCenter = currentX;
+			yCenter = currentY;
+			curveStarted = true;
+		}
+		else{
+			xCenter = currentX * 2 - xCenter;
+			yCenter = currentY * 2 - yCenter;
+		}
 		currentX = currentX + x;
 		currentY = currentY + y;
 		Element currChild = doc.createElement("quad");
@@ -417,8 +435,15 @@ public class mxPathParser
 		double x = Shape2Xml.getPathParam(path, 1);
 		double y = Shape2Xml.getPathParam(path, 2);
 
-		xCenter = currentX * 2 - xCenter;
-		yCenter = currentY * 2 - yCenter;
+		if(!curveStarted){
+			xCenter = currentX;
+			yCenter = currentY;
+			curveStarted = true;
+		}
+		else{
+			xCenter = currentX * 2 - xCenter;
+			yCenter = currentY * 2 - yCenter;
+		}
 		currentX = x;
 		currentY = y;
 		Element currChild = doc.createElement("quad");
@@ -501,7 +526,6 @@ public class mxPathParser
 
 	/**
 	 * @param d number to round
-	 * @param c decimals to round to
 	 * @return rounded <b>d</b> to <b>c</b> decimals
 	 */
 	private double rtd(double d) 
