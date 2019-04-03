@@ -49,14 +49,21 @@ public class Shape2Xml
 	public static Element parse(Element element, Document xmlDoc, XmlConfig configDoc)
 	{
 		double s = configDoc.getRelativeScalingRatio();
+
+		Double trSkewX = getSkewFromTransform(element, true);
+		Double trSkewY = getSkewFromTransform(element, false);
+		Double[] trRotate = getRotationFromTransform(element);
+		Double[] trTranslate = getPointFromTransform("translate", element);
+		Double[] trScale = getPointFromTransform("scale", element);
 		
 		if (element.getNodeName().equals("rect"))
 		{
-			if (element.getAttribute("transform") != null && !element.getAttribute("transform").equals(""))
-			{
-				//transformed rect or roundrect
-				return matrixTransformRect(element, xmlDoc, configDoc);
-			}
+			// TODO: Adapt
+//			if (element.getAttribute("transform") != null && !element.getAttribute("transform").equals(""))
+//			{
+//				//transformed rect or roundrect
+//				return matrixTransformRect(element, xmlDoc, configDoc);
+//			}
 
 			int dn = configDoc.getDecimalsToRound();
 			double x = getDoubleAttribute(element, "x");
@@ -66,13 +73,17 @@ public class Shape2Xml
 			double rx = getDoubleAttribute(element, "rx");
 			double ry = getDoubleAttribute(element, "ry");
 
-			x = x - configDoc.getStencilBoundsMinX();
-			y = y - configDoc.getStencilBoundsMinY();
+			double scaleFactorX = (trScale != null && trScale.length > 0 ? trScale[0] : 1);
+			double scaleFactorY = (trScale != null && trScale.length > 1 ? trScale[1] : trScale != null && trScale.length == 1 ? scaleFactorX : 1);
+			//cx = cx * Math.abs(scaleFactorX) + (trTranslate != null && trTranslate.length > 0 ? trTranslate[0] : 0) + (scaleFactorX < 1 ? 2 * rx * scaleFactorX : 0) - configDoc.getStencilBoundsMinX();
+			x = x * scaleFactorX + (trTranslate != null && trTranslate.length > 0 ? trTranslate[0] : 0) - configDoc.getStencilBoundsMinX();
+			//cy = cy * Math.abs(scaleFactorY) + (trTranslate != null && trTranslate.length > 1 ? trTranslate[1] : 0) + (scaleFactorY < 1 ? 2 * ry * scaleFactorY : 0) - configDoc.getStencilBoundsMinY();
+			y = y * scaleFactorY + (trTranslate != null && trTranslate.length > 1 ? trTranslate[1] : 0) - configDoc.getStencilBoundsMinY();
 
-			x = roundToDecimals(x * s, dn);
-			y = roundToDecimals(y * s, dn);
-			w = roundToDecimals(w * s, dn);
-			h = roundToDecimals(h * s, dn);
+			x = roundToDecimals(x * s * Math.abs(scaleFactorX), dn);
+			y = roundToDecimals(y * s * Math.abs(scaleFactorY), dn);
+			w = roundToDecimals(w * s * Math.abs(scaleFactorX), dn);
+			h = roundToDecimals(h * s * Math.abs(scaleFactorY), dn);
 			rx = roundToDecimals(rx * s, dn);
 			ry = roundToDecimals(ry * s, dn);
 
@@ -106,7 +117,7 @@ public class Shape2Xml
 		}
 		else if (element.getNodeName().equals("line"))
 		{
-			Double[] tr = getTransform(element);
+			Double[] tr = getMatrixFromTransform(element);
 
 			double x1 = getDoubleAttribute(element, "x1");
 			double y1 = getDoubleAttribute(element, "y1");
@@ -115,11 +126,11 @@ public class Shape2Xml
 
 			String pathString =  "M " + x1 + " " + y1 + " L " + x2 + " " + y2;
 
-			pathString = matrixTransformPath(pathString, tr, configDoc);
+			pathString = transformPath(pathString, tr, null, null, null, null, null, configDoc);
 			double dx = configDoc.getStencilBoundsMinX();
 			double dy = configDoc.getStencilBoundsMinY();
-			pathString = matrixTransformPath(pathString, new Double[]{1.0, 0.0, 0.0, 1.0, -dx, -dy}, configDoc);
-			pathString = matrixTransformPath(pathString, new Double[]{s, 0.0, 0.0, s, 0.0, 0.0}, configDoc);
+			pathString = transformPath(pathString, new Double[]{1.0, 0.0, 0.0, 1.0, -dx, -dy}, null, null, null, null, null, configDoc);
+			pathString = transformPath(pathString, new Double[]{s, 0.0, 0.0, s, 0.0, 0.0}, null, null, null, null, null, configDoc);
 
 			mxPathParser pp = new mxPathParser();
 			return pp.createShape(pathString, xmlDoc, configDoc.getDecimalsToRound());
@@ -128,7 +139,7 @@ public class Shape2Xml
 		{
 			if (element.getAttribute("transform") != null && !element.getAttribute("transform").equals(""))
 			{
-				element = matrixTransformPoly(element, configDoc);
+				element = transformPoly(element, trTranslate, trScale, trRotate, trSkewX, trSkewY, configDoc);
 			}
 
 			String pointsString = element.getAttribute("points");
@@ -254,7 +265,7 @@ public class Shape2Xml
 				isCircle = true;
 			}
 
-			Double[] tr = getTransform(element);
+			Double[] tr = getMatrixFromTransform(element);
 
 			double cx = getDoubleAttribute(element, "cx");
 			double cy = getDoubleAttribute(element, "cy");
@@ -297,11 +308,11 @@ public class Shape2Xml
 						" A " + rx + " " + ry + " 0 0 1 " + x4 + " " + y4 + 
 						" A " + rx + " " + ry + " 0 0 1 " + x1 + " " + y1 + " Z ";
 
-				ellString = matrixTransformPath(ellString, tr, configDoc);
+				ellString = transformPath(ellString, tr, null, null, null, null, null, configDoc);
 				double dx = configDoc.getStencilBoundsMinX();
 				double dy = configDoc.getStencilBoundsMinY();
-				ellString = matrixTransformPath(ellString, new Double[]{1.0, 0.0, 0.0, 1.0, -dx, -dy}, configDoc);
-				ellString = matrixTransformPath(ellString, new Double[]{s, 0.0, 0.0, s, 0.0, 0.0}, configDoc);
+				ellString = transformPath(ellString, new Double[]{1.0, 0.0, 0.0, 1.0, -dx, -dy}, null, null, null, null, null, configDoc);
+				ellString = transformPath(ellString, new Double[]{s, 0.0, 0.0, s, 0.0, 0.0}, null, null, null, null, null, configDoc);
 				mxPathParser pp = new mxPathParser();
 				return pp.createShape(ellString, xmlDoc, configDoc.getDecimalsToRound());
 
@@ -312,12 +323,16 @@ public class Shape2Xml
 				Element ellipse = xmlDoc.createElement("ellipse");
 
 				int rd = configDoc.getDecimalsToRound();
-				cx = cx - configDoc.getStencilBoundsMinX();
-				cy = cy - configDoc.getStencilBoundsMinY();
+				double scaleFactorX = (trScale != null && trScale.length > 0 ? trScale[0] : 1);
+				double scaleFactorY = (trScale != null && trScale.length > 1 ? trScale[1] : trScale != null && trScale.length == 1 ? scaleFactorX : 1);
+				//cx = cx * Math.abs(scaleFactorX) + (trTranslate != null && trTranslate.length > 0 ? trTranslate[0] : 0) + (scaleFactorX < 1 ? 2 * rx * scaleFactorX : 0) - configDoc.getStencilBoundsMinX();
+				cx = cx * scaleFactorX + (trTranslate != null && trTranslate.length > 0 ? trTranslate[0] : 0) - configDoc.getStencilBoundsMinX();
+				//cy = cy * Math.abs(scaleFactorY) + (trTranslate != null && trTranslate.length > 1 ? trTranslate[1] : 0) + (scaleFactorY < 1 ? 2 * ry * scaleFactorY : 0) - configDoc.getStencilBoundsMinY();
+				cy = cy * scaleFactorY + (trTranslate != null && trTranslate.length > 1 ? trTranslate[1] : 0) - configDoc.getStencilBoundsMinY();
 				cx = cx * s;
 				cy = cy * s;
-				rx = rx * s;
-				ry = ry * s;
+				rx = rx * s * Math.abs(scaleFactorX);
+				ry = ry * s * Math.abs(scaleFactorY);
 
 				ellipse.setAttribute("x", String.valueOf(roundToDecimals(cx - rx, rd)));
 				ellipse.setAttribute("y", String.valueOf(roundToDecimals(cy - ry, rd)));
@@ -338,13 +353,13 @@ public class Shape2Xml
 			path = path.replaceAll("e -", "e-");
 			element.setAttribute("d", path);
 
-			Double[] tr = getTransform(element);
+			Double[] tr = getMatrixFromTransform(element);
 
-			path = matrixTransformPath(path, tr, configDoc);
+			path = transformPath(path, tr, trTranslate, trScale, trRotate, trSkewX, trSkewY, configDoc);
 			double dx = configDoc.getStencilBoundsMinX();
 			double dy = configDoc.getStencilBoundsMinY();
-			path = matrixTransformPath(path, new Double[]{1.0, 0.0, 0.0, 1.0, -dx, -dy}, configDoc);
-			path = matrixTransformPath(path, new Double[]{s, 0.0, 0.0, s, 0.0, 0.0}, configDoc);
+			path = transformPath(path, new Double[]{1.0, 0.0, 0.0, 1.0, -dx, -dy}, null, null, null, null, null, configDoc);
+			path = transformPath(path, new Double[]{s, 0.0, 0.0, s, 0.0, 0.0}, null, null, null, null, null, configDoc);
 			mxPathParser pp = new mxPathParser();
 			return pp.createShape(path, xmlDoc, configDoc.getDecimalsToRound());
 		}
@@ -715,14 +730,17 @@ public class Shape2Xml
 	 * @param configDoc target stencil XML config document
 	 * @return <b>element</b> with an applied transformation. The transform attribute is removed in the process.
 	 */
-	private static Element matrixTransformPoly(Element element, XmlConfig configDoc)
+	private static Element transformPoly(Element element, Double[] trTranslate, Double[] trScale, Double[] trRotate, Double trSkewX, Double trSkewY, XmlConfig configDoc)
 	{
-		Double[] tr = getTransform(element);
+		Double[] tr = getMatrixFromTransform(element);
 
-		if (tr == null)
+		if (tr == null && trTranslate == null && trScale == null && trRotate == null && trSkewX == null && trSkewY == null)
 		{
 			return element;
 		}
+
+		double scaleFactorX = (trScale != null && trScale.length > 0 ? trScale[0] : 1);
+		double scaleFactorY = (trScale != null && trScale.length > 1 ? trScale[1] : trScale != null && trScale.length == 1 ? scaleFactorX : 1);
 
 		String pointsString = element.getAttribute("points");
 		String newPointsString = "";
@@ -750,9 +768,18 @@ public class Shape2Xml
 			x = Double.valueOf(xString);
 			y = Double.valueOf(yString);
 
+			double xNew;
+			double yNew;
 			// the actual transform
-			double xNew = x * tr[0] + y * tr[2] + tr[4];
-			double yNew = x * tr[1] + y * tr[3] + tr[5];
+			if(tr != null){
+				xNew = x * tr[0] + y * tr[2] + tr[4];
+				yNew = x * tr[1] + y * tr[3] + tr[5];
+			}
+			else{
+				xNew = x * scaleFactorX + (trTranslate != null && trTranslate.length > 0 ? trTranslate[0] : 0);
+				yNew = y * scaleFactorY + (trTranslate != null && trTranslate.length > 1 ? trTranslate[1] : 0);
+			}
+
 			// add the new coords to the new string
 
 			newPointsString += xNew + "," + yNew + " ";
@@ -784,7 +811,7 @@ public class Shape2Xml
 	 */
 	private static Element matrixTransformRect(Element element, Document xmlDoc, XmlConfig configDoc)
 	{
-		Double[] tr = getTransform(element);
+		Double[] tr = getMatrixFromTransform(element);
 		double x = getDoubleAttribute(element, "x");
 		double y = getDoubleAttribute(element, "y");
 		double w = getDoubleAttribute(element, "width");
@@ -818,14 +845,14 @@ public class Shape2Xml
 
 		if (tr != null)
 		{
-			pathString = matrixTransformPath(pathString, tr, configDoc);
+			pathString = transformPath(pathString, tr, null, null, null, null, null, configDoc);
 		}
 
 		double dx = configDoc.getStencilBoundsMinX();
 		double dy = configDoc.getStencilBoundsMinY();
-		pathString = matrixTransformPath(pathString, new Double[]{1.0, 0.0, 0.0, 1.0, -dx, -dy}, configDoc);
+		pathString = transformPath(pathString, new Double[]{1.0, 0.0, 0.0, 1.0, -dx, -dy}, null, null, null, null, null, configDoc);
 		double s = configDoc.getRelativeScalingRatio();
-		pathString = matrixTransformPath(pathString, new Double[]{s, 0.0, 0.0, s, 0.0, 0.0}, configDoc);
+		pathString = transformPath(pathString, new Double[]{s, 0.0, 0.0, s, 0.0, 0.0}, null, null, null, null, null, configDoc);
 
 		mxPathParser pp = new mxPathParser();
 		return pp.createShape(pathString, xmlDoc, configDoc.getDecimalsToRound());
@@ -834,7 +861,7 @@ public class Shape2Xml
 	/**
 	 * @param d number to round
 	 * @param c decimals to round to (use values <0 if you want to skip rounding)
-	 * @return rounnded <b>d</b> to <b>c</b> decimals
+	 * @return rounded <b>d</b> to <b>c</b> decimals
 	 */
 	public static double roundToDecimals(double d, int c) 
 	{
@@ -892,11 +919,11 @@ public class Shape2Xml
 
 	/**
 	 * @param pathString SVG path's "d" attribute
-	 * @param <b>a b c d e f</b> are parts of the SVG transform attribute's matrix in <b>double</b> format
+	 * @param tr <b>a b c d e f</b> are parts of the SVG transform attribute's matrix in <b>double</b> format
 	 * @param configDoc config doc of the target stencil XML
 	 * @return transformed SVG path's "d" attribute string
 	 */
-	private static String matrixTransformPath(String pathString, Double[] tr, XmlConfig configDoc)
+	private static String transformPath(String pathString, Double[] tr, Double[] trTranslate, Double[] trScale, Double[] trRotate, Double trSkewX, Double trSkewY, XmlConfig configDoc)
 	{
 		prevPathX = 0;
 		prevPathY = 0;
@@ -915,18 +942,19 @@ public class Shape2Xml
 			pathString = pathString.replaceAll(" E", "e");
 
 			// handle the case of two decimals (".ddddd. to .ddddd 0.")
-			 Matcher m = Pattern.compile("\\.\\d+\\.").matcher(pathString);
+			Matcher m = Pattern.compile("\\.\\d+\\.").matcher(pathString);
 			 
-			 while (m.find()) {
-				 pathString = pathString.substring(0, m.end() - 1) + " 0" + pathString.substring(m.end() - 1, pathString.length());
-				 m = Pattern.compile("\\.\\d+\\.").matcher(pathString);
-			 }
+			while (m.find())
+			{
+				pathString = pathString.substring(0, m.end() - 1) + " 0" + pathString.substring(m.end() - 1, pathString.length());
+				m = Pattern.compile("\\.\\d+\\.").matcher(pathString);
+			}
 			 
 			 
-			if (tr != null)
+			if (tr != null || trTranslate != null || trScale != null || trRotate != null || trSkewX != null || trSkewY != null)
 			{
 				String newPathString = "";
-				int nextPartStartIndex; 
+				int nextPartStartIndex;
 				char prevPathType = 'm';
 				
 				do
@@ -964,7 +992,7 @@ public class Shape2Xml
 						currPathString = currPathType + " " + currPathString;
 					}
 					
-					newPathString += parseMatrixTransformPathPart(currPathString, tr);
+					newPathString += parseTransformPathPart(currPathString, tr, trTranslate, trScale, trRotate, trSkewX, trSkewY);
 					
 					if (nextPartStartIndex != -1)
 					{
@@ -976,7 +1004,6 @@ public class Shape2Xml
 						pathString = "";
 					}
 				} 
-				
 				while (pathString.length() > 0);
 
 				newPathString = newPathString.substring(0, (newPathString.length() - 1));
@@ -996,35 +1023,35 @@ public class Shape2Xml
 
 	/**
 	 * @param currPathString one shape in the SVG path string
-	 * @param <b>a b c d e f</b> are parts of the SVG transform attribute's matrix in <b>double</b> format
+	 * @param tr <b>a b c d e f</b> are parts of the SVG transform attribute's matrix in <b>double</b> format
 	 * @param configDoc config doc of the target stencil XML
 	 * @return path part with applied transformation
 	 */
-	private static String parseMatrixTransformPathPart(String currPathString, Double[] tr)
+	private static String parseTransformPathPart(String currPathString, Double[] tr, Double[] trTranslate, Double[] trScale, Double[] trRotate, Double trSkewX, Double trSkewY)
 	{
 		char pathType = currPathString.charAt(0);
 		String newPath="error"; // if it doesn't get changes, the path type isn't recognized, so it's an error
 
 		switch (pathType)
 		{
-			case 'M' : return newPath = matrixTransformPathPartMove(currPathString, tr, true);
-			case 'm' : return newPath = matrixTransformPathPartMove(currPathString, tr, false);
-			case 'L' : return newPath = matrixTransformPathPartLine(currPathString, tr, true);
-			case 'l' : return newPath = matrixTransformPathPartLine(currPathString, tr, false);
-			case 'H' : return newPath = matrixTransformPathPartHorLine(currPathString, tr, true);
-			case 'h' : return newPath = matrixTransformPathPartHorLine(currPathString, tr, false);
-			case 'V' : return newPath = matrixTransformPathPartVerLine(currPathString, tr, true);
-			case 'v' : return newPath = matrixTransformPathPartVerLine(currPathString, tr, false);
-			case 'C' : return newPath = matrixTransformPathPartCurve(currPathString, tr, true);
-			case 'c' : return newPath = matrixTransformPathPartCurve(currPathString, tr, false);
-			case 'S' : return newPath = matrixTransformPathPartSmoothCurve(currPathString, tr, true);
-			case 's' : return newPath = matrixTransformPathPartSmoothCurve(currPathString, tr, false);
-			case 'Q' : return newPath = matrixTransformPathPartQuad(currPathString, tr, true);
-			case 'q' : return newPath = matrixTransformPathPartQuad(currPathString, tr, false);
-			case 'T' : return newPath = matrixTransformPathPartSmoothQuad(currPathString, tr, true);
-			case 't' : return newPath = matrixTransformPathPartSmoothQuad(currPathString, tr, false);
-			case 'A' : return newPath = matrixTransformPathPartArc(currPathString, tr, true);
-			case 'a' : return newPath = matrixTransformPathPartArc(currPathString, tr, false);
+			case 'M' : return newPath = transformPathPartMove(currPathString, tr, trTranslate, trScale, trRotate, trSkewX, trSkewY, true);
+			case 'm' : return newPath = transformPathPartMove(currPathString, tr, trTranslate, trScale, trRotate, trSkewX, trSkewY, false);
+			case 'L' : return newPath = transformPathPartLine(currPathString, tr, trTranslate, trScale, trRotate, trSkewX, trSkewY, true);
+			case 'l' : return newPath = transformPathPartLine(currPathString, tr, trTranslate, trScale, trRotate, trSkewX, trSkewY, false);
+			case 'H' : return newPath = transformPathPartHorLine(currPathString, tr, trTranslate, trScale, trRotate, trSkewX, trSkewY, true);
+			case 'h' : return newPath = transformPathPartHorLine(currPathString, tr, trTranslate, trScale, trRotate, trSkewX, trSkewY, false);
+			case 'V' : return newPath = transformPathPartVerLine(currPathString, tr, trTranslate, trScale, trRotate, trSkewX, trSkewY, true);
+			case 'v' : return newPath = transformPathPartVerLine(currPathString, tr, trTranslate, trScale, trRotate, trSkewX, trSkewY, false);
+			case 'C' : return newPath = transformPathPartCurve(currPathString, tr, trTranslate, trScale, trRotate, trSkewX, trSkewY, true);
+			case 'c' : return newPath = transformPathPartCurve(currPathString, tr, trTranslate, trScale, trRotate, trSkewX, trSkewY, false);
+			case 'S' : return newPath = transformPathPartSmoothCurve(currPathString, tr, trTranslate, trScale, trRotate, trSkewX, trSkewY, true);
+			case 's' : return newPath = transformPathPartSmoothCurve(currPathString, tr, trTranslate, trScale, trRotate, trSkewX, trSkewY, false);
+			case 'Q' : return newPath = transformPathPartQuad(currPathString, tr, trTranslate, trScale, trRotate, trSkewX, trSkewY, true);
+			case 'q' : return newPath = transformPathPartQuad(currPathString, tr, trTranslate, trScale, trRotate, trSkewX, trSkewY, false);
+			case 'T' : return newPath = transformPathPartSmoothQuad(currPathString, tr, trTranslate, trScale, trRotate, trSkewX, trSkewY, true);
+			case 't' : return newPath = transformPathPartSmoothQuad(currPathString, tr, trTranslate, trScale, trRotate, trSkewX, trSkewY, false);
+			case 'A' : return newPath = transformPathPartArc(currPathString, tr, trTranslate, trScale, trRotate, trSkewX, trSkewY, true); // TODO
+			case 'a' : return newPath = transformPathPartArc(currPathString, tr, trTranslate, trScale, trRotate, trSkewX, trSkewY, false); // TODO
 			case 'Z' :
 				prevPathX = prevMoveX;
 				prevPathY = prevMoveY;
@@ -1033,20 +1060,14 @@ public class Shape2Xml
 				prevPathX = prevMoveX;
 				prevPathY = prevMoveY;
 				return "z ";
-		}
-
-		if (!newPath.equals("error"))
-		{
-			return newPath;
-		}
-		else
-		{
-			return null;
+			default:
+				return null;
 		}
 	}
 
 	//for internal use only
-	private static String matrixTransformPathPartArc(String currPathString, Double[] tr, boolean isAbs)
+	// TODO
+	private static String transformPathPartArc(String currPathString, Double[] tr, Double[] trTranslate, Double[] trScale, Double[] trRotate, Double trSkewX, Double trSkewY, boolean isAbs)
 	{
 		double xScaleFactor = Math.sqrt((tr[0] * tr[0]) + (tr[2] * tr[2]));
 		double yScaleFactor = Math.sqrt((tr[1] * tr[1]) + (tr[3] * tr[3]));
@@ -1055,6 +1076,8 @@ public class Shape2Xml
 		double xRot = getPathParam(currPathString, 3);
 		int largeArc = (int) getPathParam(currPathString, 4);
 		int sweep = (int) getPathParam(currPathString, 5);
+		double scaleFactorX = (trScale != null && trScale.length > 0 ? trScale[0] : 1);
+		double scaleFactorY = (trScale != null && trScale.length > 1 ? trScale[1] : trScale != null && trScale.length == 1 ? scaleFactorX : 1);
 
 		// correcting sweep if scaling is negative
 		if ((tr[0] < 0 && tr[3] >= 0) || ( tr[0] >= 0 && tr[3] < 0))
@@ -1109,17 +1132,27 @@ public class Shape2Xml
 	}
 
 	//for internal use only
-	private static String matrixTransformPathPartSmoothQuad(String currPathString, Double[] tr, boolean isAbs)
+	private static String transformPathPartSmoothQuad(String currPathString, Double[] tr, Double[] trTranslate, Double[] trScale, Double[] trRotate, Double trSkewX, Double trSkewY, boolean isAbs)
 	{
 		double x = getPathParam(currPathString, 1);
 		double y = getPathParam(currPathString, 2);
+		double scaleFactorX = (trScale != null && trScale.length > 0 ? trScale[0] : 1);
+		double scaleFactorY = (trScale != null && trScale.length > 1 ? trScale[1] : trScale != null && trScale.length == 1 ? scaleFactorX : 1);
 
 		if (isAbs)
 		{
 			prevPathX = x;
 			prevPathY = y;
-			double xNew = x * tr[0] + y * tr[2] + tr[4];
-			double yNew = x * tr[1] + y * tr[3] + tr[5];
+			double xNew;
+			double yNew;
+			if(tr != null){
+				xNew = x * tr[0] + y * tr[2] + tr[4];
+				yNew = x * tr[1] + y * tr[3] + tr[5];
+			}
+			else{
+				xNew = x * scaleFactorX + (trTranslate != null && trTranslate.length > 0 ? trTranslate[0] : 0);
+				yNew = y * scaleFactorY + (trTranslate != null && trTranslate.length > 1 ? trTranslate[1] : 0);
+			}
 
 			currPathString = "T " + " " + xNew + " " + yNew + " ";
 
@@ -1128,12 +1161,20 @@ public class Shape2Xml
 		}
 		else
 		{
-			double oldAbsX = prevPathX + x;
-			double oldAbsY = prevPathY + y;
-			prevPathX += x;
-			prevPathY += y;
-			double newAbsX = oldAbsX * tr[0] + oldAbsY * tr[2] + tr[4];
-			double newAbsY = oldAbsX * tr[1] + oldAbsY * tr[3] + tr[5];
+			double oldAbsX = prevPathX + x * scaleFactorX;
+			double oldAbsY = prevPathY + y * scaleFactorY;
+			prevPathX += x * scaleFactorX;
+			prevPathY += y * scaleFactorY;
+			double newAbsX;
+			double newAbsY;
+			if(tr != null){
+				newAbsX = oldAbsX * tr[0] + oldAbsY * tr[2] + tr[4];
+				newAbsY = oldAbsX * tr[1] + oldAbsY * tr[3] + tr[5];
+			}
+			else{
+				newAbsX = oldAbsX + (trTranslate != null && trTranslate.length > 0 ? trTranslate[0] : 0);
+				newAbsY = oldAbsY + (trTranslate != null && trTranslate.length > 1 ? trTranslate[1] : 0);
+			}
 
 			double newRelX = newAbsX - lastPathX;
 			double newRelY = newAbsY - lastPathY;
@@ -1147,21 +1188,35 @@ public class Shape2Xml
 	}
 
 	//for internal use only
-	private static String matrixTransformPathPartQuad(String currPathString, Double[] tr, boolean isAbs)
+	private static String transformPathPartQuad(String currPathString, Double[] tr, Double[] trTranslate, Double[] trScale, Double[] trRotate, Double trSkewX, Double trSkewY, boolean isAbs)
 	{
 		double x1 = getPathParam(currPathString, 1);
 		double y1 = getPathParam(currPathString, 2);
 		double x = getPathParam(currPathString, 3);
 		double y = getPathParam(currPathString, 4);
+		double scaleFactorX = (trScale != null && trScale.length > 0 ? trScale[0] : 1);
+		double scaleFactorY = (trScale != null && trScale.length > 1 ? trScale[1] : trScale != null && trScale.length == 1 ? scaleFactorX : 1);
 
 		if (isAbs)
 		{
 			prevPathX = x;
 			prevPathY = y;
-			double xNew = x * tr[0] + y * tr[2] + tr[4];
-			double yNew = x * tr[1] + y * tr[3] + tr[5];
-			double x1New = x1 * tr[0] + y1 * tr[2] + tr[4];
-			double y1New = x1 * tr[1] + y1 * tr[3] + tr[5];
+			double xNew;
+			double yNew;
+			double x1New;
+			double y1New;
+			if(tr != null){
+				xNew = x * tr[0] + y * tr[2] + tr[4];
+				yNew = x * tr[1] + y * tr[3] + tr[5];
+				x1New = x1 * tr[0] + y1 * tr[2] + tr[4];
+				y1New = x1 * tr[1] + y1 * tr[3] + tr[5];
+			}
+			else{
+				xNew = x * scaleFactorX + (trTranslate != null && trTranslate.length > 0 ? trTranslate[0] : 0);
+				yNew = y * scaleFactorY + (trTranslate != null && trTranslate.length > 1 ? trTranslate[1] : 0);
+				x1New = x1 * scaleFactorX + (trTranslate != null && trTranslate.length > 0 ? trTranslate[0] : 0);
+				y1New = y1 * scaleFactorY + (trTranslate != null && trTranslate.length > 1 ? trTranslate[1] : 0);
+			}
 
 			currPathString = "Q " + x1New + " " + y1New + " " + xNew + " " + yNew + " ";
 
@@ -1170,17 +1225,28 @@ public class Shape2Xml
 		}
 		else
 		{
-			double oldAbsX = prevPathX + x;
-			double oldAbsY = prevPathY + y;
-			double oldAbsX1 = prevPathX + x1;
-			double oldAbsY1 = prevPathY + y1;
-			prevPathX += x;
-			prevPathY += y;
-			double newAbsX = oldAbsX * tr[0] + oldAbsY * tr[2] + tr[4];
-			double newAbsY = oldAbsX * tr[1] + oldAbsY * tr[3] + tr[5];
-
-			double newAbsX1 = oldAbsX1 * tr[0] + oldAbsY1 * tr[2] + tr[4];
-			double newAbsY1 = oldAbsX1 * tr[1] + oldAbsY1 * tr[3] + tr[5];
+			double oldAbsX = prevPathX + x * scaleFactorX;
+			double oldAbsY = prevPathY + y * scaleFactorY;
+			double oldAbsX1 = prevPathX + x1 * scaleFactorX;
+			double oldAbsY1 = prevPathY + y1 * scaleFactorY;
+			prevPathX += x * scaleFactorX;
+			prevPathY += y * scaleFactorY;
+			double newAbsX;
+			double newAbsY;
+			double newAbsX1;
+			double newAbsY1;
+			if(tr != null){
+				newAbsX = oldAbsX * tr[0] + oldAbsY * tr[2] + tr[4];
+				newAbsY = oldAbsX * tr[1] + oldAbsY * tr[3] + tr[5];
+				newAbsX1 = oldAbsX1 * tr[0] + oldAbsY1 * tr[2] + tr[4];
+				newAbsY1 = oldAbsX1 * tr[1] + oldAbsY1 * tr[3] + tr[5];
+			}
+			else{
+				newAbsX = oldAbsX + (trTranslate != null && trTranslate.length > 0 ? trTranslate[0] : 0);
+				newAbsY = oldAbsY + (trTranslate != null && trTranslate.length > 1 ? trTranslate[1] : 0);
+				newAbsX1 = oldAbsX1 + (trTranslate != null && trTranslate.length > 0 ? trTranslate[0] : 0);
+				newAbsY1 = oldAbsY1 + (trTranslate != null && trTranslate.length > 1 ? trTranslate[1] : 0);
+			}
 
 			double newRelX = newAbsX - lastPathX;
 			double newRelY = newAbsY - lastPathY;
@@ -1197,21 +1263,35 @@ public class Shape2Xml
 	}
 
 	//for internal use only
-	private static String matrixTransformPathPartSmoothCurve(String currPathString,	Double[] tr, boolean isAbs)
+	private static String transformPathPartSmoothCurve(String currPathString, Double[] tr, Double[] trTranslate, Double[] trScale, Double[] trRotate, Double trSkewX, Double trSkewY, boolean isAbs)
 	{
 		double x2 = getPathParam(currPathString, 1);
 		double y2 = getPathParam(currPathString, 2);
 		double x = getPathParam(currPathString, 3);
 		double y = getPathParam(currPathString, 4);
+		double scaleFactorX = (trScale != null && trScale.length > 0 ? trScale[0] : 1);
+		double scaleFactorY = (trScale != null && trScale.length > 1 ? trScale[1] : trScale != null && trScale.length == 1 ? scaleFactorX : 1);
 
 		if (isAbs)
 		{
 			prevPathX = x;
 			prevPathY = y;
-			double xNew = x * tr[0] + y * tr[2] + tr[4];
-			double yNew = x * tr[1] + y * tr[3] + tr[5];
-			double x2New = x2 * tr[0] + y2 * tr[2] + tr[4];
-			double y2New = x2 * tr[1] + y2 * tr[3] + tr[5];
+			double xNew;
+			double yNew;
+			double x2New;
+			double y2New;
+			if(tr != null){
+				xNew = x * tr[0] + y * tr[2] + tr[4];
+				yNew = x * tr[1] + y * tr[3] + tr[5];
+				x2New = x2 * tr[0] + y2 * tr[2] + tr[4];
+				y2New = x2 * tr[1] + y2 * tr[3] + tr[5];
+			}
+			else{
+				xNew = x * scaleFactorX + (trTranslate != null && trTranslate.length > 0 ? trTranslate[0] : 0);
+				yNew = y * scaleFactorY + (trTranslate != null && trTranslate.length > 1 ? trTranslate[1] : 0);
+				x2New = x2 * scaleFactorX + (trTranslate != null && trTranslate.length > 0 ? trTranslate[0] : 0);
+				y2New = y2 * scaleFactorY + (trTranslate != null && trTranslate.length > 1 ? trTranslate[1] : 0);
+			}
 
 			currPathString = "S " + x2New + " " + y2New + " " + xNew + " " + yNew + " ";
 
@@ -1220,16 +1300,28 @@ public class Shape2Xml
 		}
 		else
 		{
-			double oldAbsX = prevPathX + x;
-			double oldAbsY = prevPathY + y;
-			double oldAbsX2 = prevPathX + x2;
-			double oldAbsY2 = prevPathY + y2;
-			prevPathX += x;
-			prevPathY += y;
-			double newAbsX = oldAbsX * tr[0] + oldAbsY * tr[2] + tr[4];
-			double newAbsY = oldAbsX * tr[1] + oldAbsY * tr[3] + tr[5];
-			double newAbsX2 = oldAbsX2 * tr[0] + oldAbsY2 * tr[2] + tr[4];
-			double newAbsY2 = oldAbsX2 * tr[1] + oldAbsY2 * tr[3] + tr[5];
+			double oldAbsX = prevPathX + x * scaleFactorX;
+			double oldAbsY = prevPathY + y * scaleFactorY;
+			double oldAbsX2 = prevPathX + x2 * scaleFactorX;
+			double oldAbsY2 = prevPathY + y2 * scaleFactorY;
+			prevPathX += x * scaleFactorX;
+			prevPathY += y * scaleFactorY;
+			double newAbsX;
+			double newAbsY;
+			double newAbsX2;
+			double newAbsY2;
+			if(tr != null){
+				newAbsX = oldAbsX * tr[0] + oldAbsY * tr[2] + tr[4];
+				newAbsY = oldAbsX * tr[1] + oldAbsY * tr[3] + tr[5];
+				newAbsX2 = oldAbsX2 * tr[0] + oldAbsY2 * tr[2] + tr[4];
+				newAbsY2 = oldAbsX2 * tr[1] + oldAbsY2 * tr[3] + tr[5];
+			}
+			else{
+				newAbsX = oldAbsX + (trTranslate != null && trTranslate.length > 0 ? trTranslate[0] : 0);
+				newAbsY = oldAbsY + (trTranslate != null && trTranslate.length > 1 ? trTranslate[1] : 0);
+				newAbsX2 = oldAbsX2 + (trTranslate != null && trTranslate.length > 0 ? trTranslate[0] : 0);
+				newAbsY2 = oldAbsY2 + (trTranslate != null && trTranslate.length > 1 ? trTranslate[1] : 0);
+			}
 
 			double newRelX = newAbsX - lastPathX;
 			double newRelY = newAbsY - lastPathY;
@@ -1246,7 +1338,7 @@ public class Shape2Xml
 	}
 
 	//for internal use only
-	private static String matrixTransformPathPartCurve(String currPathString, Double[] tr, boolean isAbs)
+	private static String transformPathPartCurve(String currPathString, Double[] tr, Double[] trTranslate, Double[] trScale, Double[] trRotate, Double trSkewX, Double trSkewY, boolean isAbs)
 	{
 		double x1 = getPathParam(currPathString, 1);
 		double y1 = getPathParam(currPathString, 2);
@@ -1254,17 +1346,35 @@ public class Shape2Xml
 		double y2 = getPathParam(currPathString, 4);
 		double x = getPathParam(currPathString, 5);
 		double y = getPathParam(currPathString, 6);
+		double scaleFactorX = (trScale != null && trScale.length > 0 ? trScale[0] : 1);
+		double scaleFactorY = (trScale != null && trScale.length > 1 ? trScale[1] : trScale != null && trScale.length == 1 ? scaleFactorX : 1);
 
 		if (isAbs)
 		{
 			prevPathX = x;
 			prevPathY = y;
-			double xNew = x * tr[0] + y * tr[2] + tr[4];
-			double yNew = x * tr[1] + y * tr[3] + tr[5];
-			double x1New = x1 * tr[0] + y1 * tr[2] + tr[4];
-			double y1New = x1 * tr[1] + y1 * tr[3] + tr[5];
-			double x2New = x2 * tr[0] + y2 * tr[2] + tr[4];
-			double y2New = x2 * tr[1] + y2 * tr[3] + tr[5];
+			double xNew;
+			double yNew;
+			double x1New;
+			double y1New;
+			double x2New;
+			double y2New;
+			if(tr != null){
+				xNew = x * tr[0] + y * tr[2] + tr[4];
+				yNew = x * tr[1] + y * tr[3] + tr[5];
+				x1New = x1 * tr[0] + y1 * tr[2] + tr[4];
+				y1New = x1 * tr[1] + y1 * tr[3] + tr[5];
+				x2New = x2 * tr[0] + y2 * tr[2] + tr[4];
+				y2New = x2 * tr[1] + y2 * tr[3] + tr[5];
+			}
+			else{
+				xNew = x * scaleFactorX + (trTranslate != null && trTranslate.length > 0 ? trTranslate[0] : 0);
+				yNew = y * scaleFactorY + (trTranslate != null && trTranslate.length > 1 ? trTranslate[1] : 0);
+				x1New = x1 * scaleFactorX + (trTranslate != null && trTranslate.length > 0 ? trTranslate[0] : 0);
+				y1New = y1 * scaleFactorY + (trTranslate != null && trTranslate.length > 1 ? trTranslate[1] : 0);
+				x2New = x2 * scaleFactorX + (trTranslate != null && trTranslate.length > 0 ? trTranslate[0] : 0);
+				y2New = y2 * scaleFactorY + (trTranslate != null && trTranslate.length > 1 ? trTranslate[1] : 0);
+			}
 
 			currPathString = "C " + x1New + " " + y1New + " " + x2New + " " + y2New + " " + xNew + " " + yNew + " ";
 
@@ -1273,20 +1383,36 @@ public class Shape2Xml
 		}
 		else
 		{
-			double oldAbsX = prevPathX + x;
-			double oldAbsY = prevPathY + y;
-			double oldAbsX1 = prevPathX + x1;
-			double oldAbsY1 = prevPathY + y1;
-			double oldAbsX2 = prevPathX + x2;
-			double oldAbsY2 = prevPathY + y2;
-			prevPathX += x;
-			prevPathY += y;
-			double newAbsX = oldAbsX * tr[0] + oldAbsY * tr[2] + tr[4];
-			double newAbsY = oldAbsX * tr[1] + oldAbsY * tr[3] + tr[5];
-			double newAbsX1 = oldAbsX1 * tr[0] + oldAbsY1 * tr[2] + tr[4];
-			double newAbsY1 = oldAbsX1 * tr[1] + oldAbsY1 * tr[3] + tr[5];
-			double newAbsX2 = oldAbsX2 * tr[0] + oldAbsY2 * tr[2] + tr[4];
-			double newAbsY2 = oldAbsX2 * tr[1] + oldAbsY2 * tr[3] + tr[5];
+			double oldAbsX = prevPathX + x * scaleFactorX;
+			double oldAbsY = prevPathY + y * scaleFactorY;
+			double oldAbsX1 = prevPathX + x1 * scaleFactorX;
+			double oldAbsY1 = prevPathY + y1 * scaleFactorY;
+			double oldAbsX2 = prevPathX + x2 * scaleFactorX;
+			double oldAbsY2 = prevPathY + y2 * scaleFactorY;
+			prevPathX += x * scaleFactorX;
+			prevPathY += y * scaleFactorY;
+			double newAbsX;
+			double newAbsY;
+			double newAbsX1;
+			double newAbsY1;
+			double newAbsX2;
+			double newAbsY2;
+			if(tr != null){
+				newAbsX = oldAbsX * tr[0] + oldAbsY * tr[2] + tr[4];
+				newAbsY = oldAbsX * tr[1] + oldAbsY * tr[3] + tr[5];
+				newAbsX1 = oldAbsX1 * tr[0] + oldAbsY1 * tr[2] + tr[4];
+				newAbsY1 = oldAbsX1 * tr[1] + oldAbsY1 * tr[3] + tr[5];
+				newAbsX2 = oldAbsX2 * tr[0] + oldAbsY2 * tr[2] + tr[4];
+				newAbsY2 = oldAbsX2 * tr[1] + oldAbsY2 * tr[3] + tr[5];
+			}
+			else{
+				newAbsX = oldAbsX + (trTranslate != null && trTranslate.length > 0 ? trTranslate[0] : 0);
+				newAbsY = oldAbsY + (trTranslate != null && trTranslate.length > 1 ? trTranslate[1] : 0);
+				newAbsX1 = oldAbsX1 + (trTranslate != null && trTranslate.length > 0 ? trTranslate[0] : 0);
+				newAbsY1 = oldAbsY1 + (trTranslate != null && trTranslate.length > 1 ? trTranslate[1] : 0);
+				newAbsX2 = oldAbsX2 + (trTranslate != null && trTranslate.length > 0 ? trTranslate[0] : 0);
+				newAbsY2 = oldAbsY2 + (trTranslate != null && trTranslate.length > 1 ? trTranslate[1] : 0);
+			}
 
 			double newRelX = newAbsX - lastPathX;
 			double newRelY = newAbsY - lastPathY;
@@ -1305,18 +1431,30 @@ public class Shape2Xml
 	}
 
 	//for internal use only
-	private static String matrixTransformPathPartVerLine(String currPathString,	Double[] tr, boolean isAbs)
+	private static String transformPathPartVerLine(String currPathString, Double[] tr, Double[] trTranslate, Double[] trScale, Double[] trRotate, Double trSkewX, Double trSkewY, boolean isAbs)
 	{
 		double x = 0;
 		double y = getPathParam(currPathString, 1);
+		double scaleFactorX = (trScale != null && trScale.length > 0 ? trScale[0] : 1);
+		double scaleFactorY = (trScale != null && trScale.length > 1 ? trScale[1] : trScale != null && trScale.length == 1 ? scaleFactorX : 1);
 
 		if (isAbs)
 		{
 			x = prevPathX;
 			prevPathX = x;
 			prevPathY = y;
-			double xNew = x * tr[0] + y * tr[2] + tr[4];
-			double yNew = x * tr[1] + y * tr[3] + tr[5];
+			double xNew;
+			double yNew;
+			if(tr != null)
+			{
+				xNew = x * tr[0] + y * tr[2] + tr[4];
+				yNew = x * tr[1] + y * tr[3] + tr[5];
+			}
+			else
+			{
+				xNew = x * scaleFactorX + (trTranslate != null && trTranslate.length > 0 ? trTranslate[0] : 0);
+				yNew = y * scaleFactorY + (trTranslate != null && trTranslate.length > 1 ? trTranslate[1] : 0);
+			}
 
 			currPathString = "L " + xNew + " " + yNew + " ";
 			lastPathX = xNew;
@@ -1324,12 +1462,20 @@ public class Shape2Xml
 		}
 		else
 		{
-			double oldAbsX = prevPathX + x;
-			double oldAbsY = prevPathY + y;
-			prevPathX += x;
-			prevPathY += y;
-			double newAbsX = oldAbsX * tr[0] + oldAbsY * tr[2] + tr[4];
-			double newAbsY = oldAbsX * tr[1] + oldAbsY * tr[3] + tr[5];
+			double oldAbsX = prevPathX + x * scaleFactorX;
+			double oldAbsY = prevPathY + y * scaleFactorY;
+			prevPathX += x * scaleFactorX;
+			prevPathY += y * scaleFactorY;
+			double newAbsX;
+			double newAbsY;
+			if(tr != null){
+				newAbsX = oldAbsX * tr[0] + oldAbsY * tr[2] + tr[4];
+				newAbsY = oldAbsX * tr[1] + oldAbsY * tr[3] + tr[5];
+			}
+			else{
+				newAbsX = oldAbsX + (trTranslate != null && trTranslate.length > 0 ? trTranslate[0] : 0);
+				newAbsY = oldAbsY + (trTranslate != null && trTranslate.length > 1 ? trTranslate[1] : 0);
+			}
 			double newRelX = newAbsX - lastPathX;
 			double newRelY = newAbsY - lastPathY;
 
@@ -1342,19 +1488,30 @@ public class Shape2Xml
 	}
 
 	//for internal use only
-	private static String matrixTransformPathPartHorLine(String currPathString, Double[] tr, boolean isAbs)
+	private static String transformPathPartHorLine(String currPathString, Double[] tr, Double[] trTranslate, Double[] trScale, Double[] trRotate, Double trSkewX, Double trSkewY, boolean isAbs)
 	{
 		double x = getPathParam(currPathString, 1);
 		double y = 0;
-
+		double scaleFactorX = (trScale != null && trScale.length > 0 ? trScale[0] : 1);
+		double scaleFactorY = (trScale != null && trScale.length > 1 ? trScale[1] : trScale != null && trScale.length == 1 ? scaleFactorX : 1);
 
 		if (isAbs)
 		{
 			y = prevPathY;
 			prevPathX = x;
 			prevPathY = y;
-			double xNew = x * tr[0] + y * tr[2] + tr[4];
-			double yNew = x * tr[1] + y * tr[3] + tr[5];
+			double xNew;
+			double yNew;
+			if(tr != null)
+			{
+				xNew = x * tr[0] + y * tr[2] + tr[4];
+				yNew = x * tr[1] + y * tr[3] + tr[5];
+			}
+			else
+			{
+				xNew = x * scaleFactorX + (trTranslate != null && trTranslate.length > 0 ? trTranslate[0] : 0);
+				yNew = y * scaleFactorY + (trTranslate != null && trTranslate.length > 1 ? trTranslate[1] : 0);
+			}
 
 			currPathString = "L " + xNew + " " + yNew + " ";
 			lastPathX = xNew;
@@ -1362,12 +1519,20 @@ public class Shape2Xml
 		}
 		else
 		{
-			double oldAbsX = prevPathX + x;
-			double oldAbsY = prevPathY + y;
-			prevPathX += x;
-			prevPathY += y;
-			double newAbsX = oldAbsX * tr[0] + oldAbsY * tr[2] + tr[4];
-			double newAbsY = oldAbsX * tr[1] + oldAbsY * tr[3] + tr[5];
+			double oldAbsX = prevPathX + x * scaleFactorX;
+			double oldAbsY = prevPathY + y * scaleFactorY;
+			prevPathX += x * scaleFactorX;
+			prevPathY += y * scaleFactorY;
+			double newAbsX;
+			double newAbsY;
+			if(tr != null){
+				newAbsX = oldAbsX * tr[0] + oldAbsY * tr[2] + tr[4];
+				newAbsY = oldAbsX * tr[1] + oldAbsY * tr[3] + tr[5];
+			}
+			else{
+				newAbsX = oldAbsX + (trTranslate != null && trTranslate.length > 0 ? trTranslate[0] : 0);
+				newAbsY = oldAbsY + (trTranslate != null && trTranslate.length > 1 ? trTranslate[1] : 0);
+			}
 			double newRelX = newAbsX - lastPathX;
 			double newRelY = newAbsY - lastPathY;
 
@@ -1380,18 +1545,27 @@ public class Shape2Xml
 	}
 
 	//for internal use only
-	private static String matrixTransformPathPartLine(String currPathString, Double[] tr, boolean isAbs)
+	private static String transformPathPartLine(String currPathString, Double[] tr, Double[] trTranslate, Double[] trScale, Double[] trRotate, Double trSkewX, Double trSkewY, boolean isAbs)
 	{
 		double x = getPathParam(currPathString, 1);
 		double y = getPathParam(currPathString, 2);
-
+		double scaleFactorX = (trScale != null && trScale.length > 0 ? trScale[0] : 1);
+		double scaleFactorY = (trScale != null && trScale.length > 1 ? trScale[1] : trScale != null && trScale.length == 1 ? scaleFactorX : 1);
 
 		if (isAbs)
 		{
 			prevPathX = x;
 			prevPathY = y;
-			double xNew = x * tr[0] + y * tr[2] + tr[4];
-			double yNew = x * tr[1] + y * tr[3] + tr[5];
+			double xNew;
+			double yNew;
+			if(tr != null){
+				xNew = x * tr[0] + y * tr[2] + tr[4];
+				yNew = x * tr[1] + y * tr[3] + tr[5];
+			}
+			else{
+				xNew = x * scaleFactorX + (trTranslate != null && trTranslate.length > 0 ? trTranslate[0] : 0);
+				yNew = y * scaleFactorY + (trTranslate != null && trTranslate.length > 1 ? trTranslate[1] : 0);
+			}
 
 			currPathString = "L " + xNew + " " + yNew + " ";
 			lastPathX = xNew;
@@ -1399,12 +1573,20 @@ public class Shape2Xml
 		}
 		else
 		{
-			double oldAbsX = prevPathX + x;
-			double oldAbsY = prevPathY + y;
-			prevPathX += x;
-			prevPathY += y;
-			double newAbsX = oldAbsX * tr[0] + oldAbsY * tr[2] + tr[4];
-			double newAbsY = oldAbsX * tr[1] + oldAbsY * tr[3] + tr[5];
+			double oldAbsX = prevPathX + x * scaleFactorX;
+			double oldAbsY = prevPathY + y * scaleFactorY;
+			prevPathX += x * scaleFactorX;
+			prevPathY += y * scaleFactorY;
+			double newAbsX;
+			double newAbsY;
+			if(tr != null){
+				newAbsX = oldAbsX * tr[0] + oldAbsY * tr[2] + tr[4];
+				newAbsY = oldAbsX * tr[1] + oldAbsY * tr[3] + tr[5];
+			}
+			else{
+				newAbsX = oldAbsX + (trTranslate != null && trTranslate.length > 0 ? trTranslate[0] : 0);
+				newAbsY = oldAbsY + (trTranslate != null && trTranslate.length > 1 ? trTranslate[1] : 0);
+			}
 			double newRelX = newAbsX - lastPathX;
 			double newRelY = newAbsY - lastPathY;
 
@@ -1417,10 +1599,12 @@ public class Shape2Xml
 	}
 
 	//for internal use only
-	private static String matrixTransformPathPartMove(String currPathString, Double[] tr, boolean isAbs)
+	private static String transformPathPartMove(String currPathString, Double[] tr, Double[] trTranslate, Double[] trScale, Double[] trRotate, Double trSkewX, Double trSkewY, boolean isAbs)
 	{
 		double x = getPathParam(currPathString, 1);
 		double y = getPathParam(currPathString, 2);
+		double scaleFactorX = (trScale != null && trScale.length > 0 ? trScale[0] : 1);
+		double scaleFactorY = (trScale != null && trScale.length > 1 ? trScale[1] : trScale != null && trScale.length == 1 ? scaleFactorX : 1);
 
 		if (isAbs)
 		{
@@ -1428,9 +1612,17 @@ public class Shape2Xml
 			prevPathY = y;
 			prevMoveX = prevPathX;
 			prevMoveY = prevPathY;
-			
-			double xNew = x * tr[0] + y * tr[2] + tr[4];
-			double yNew = x * tr[1] + y * tr[3] + tr[5];
+			double xNew;
+			double yNew;
+
+			if(tr != null){
+				xNew = x * tr[0] + y * tr[2] + tr[4];
+				yNew = x * tr[1] + y * tr[3] + tr[5];
+			}
+			else{
+				xNew = x * scaleFactorX + (trTranslate != null && trTranslate.length > 0 ? trTranslate[0] : 0);
+				yNew = y * scaleFactorY + (trTranslate != null && trTranslate.length > 1 ? trTranslate[1] : 0);
+			}
 
 			currPathString = "M " + xNew + " " + yNew + " ";
 			lastPathX = xNew;
@@ -1438,14 +1630,22 @@ public class Shape2Xml
 		}
 		else
 		{
-			double oldAbsX = prevPathX + x;
-			double oldAbsY = prevPathY + y;
-			prevPathX += x;
-			prevPathY += y;
+			double oldAbsX = prevPathX + x * scaleFactorX;
+			double oldAbsY = prevPathY + y * scaleFactorY;
+			prevPathX += x * scaleFactorX;
+			prevPathY += y * scaleFactorY;
 			prevMoveX = prevPathX;
 			prevMoveY = prevPathY;
-			double newAbsX = oldAbsX * tr[0] + oldAbsY * tr[2] + tr[4];
-			double newAbsY = oldAbsX * tr[1] + oldAbsY * tr[3] + tr[5];
+			double newAbsX;
+			double newAbsY;
+			if(tr != null){
+				newAbsX = oldAbsX * tr[0] + oldAbsY * tr[2] + tr[4];
+				newAbsY = oldAbsX * tr[1] + oldAbsY * tr[3] + tr[5];
+			}
+			else{
+				newAbsX = oldAbsX + (trTranslate != null && trTranslate.length > 0 ? trTranslate[0] : 0);
+				newAbsY = oldAbsY + (trTranslate != null && trTranslate.length > 1 ? trTranslate[1] : 0);
+			}
 
 			currPathString = "M " + newAbsX + " " + newAbsY + " ";
 			lastPathX = newAbsX;
@@ -1519,7 +1719,7 @@ public class Shape2Xml
 		for (int i = 0; i < numParams; ++i) 
 		{
 			currIndex = path.indexOf(" ", currIndex + 1);
-		};
+		}
 		
 		return currIndex;
 	}
@@ -1659,7 +1859,146 @@ public class Shape2Xml
 		return textContent.toString();
 	}
 
-	public static Double[] getTransform(Element element)
+	/**
+	 * Gets the transform coordinates from the scale or translate functions
+	 * @param functionName "scale" or "translate"
+	 * @param element
+	 * @return
+	 */
+	public static Double[] getPointFromTransform(String functionName, Element element)
+	{
+		String trString = element.getAttribute("transform");
+
+		if(trString == null || !trString.contains("scale") && !trString.contains("translate") || !"translate".equals(functionName) && !"scale".equals(functionName))
+		{
+			return null;
+		}
+
+		double x = 0;
+		double y = 0;
+		String xString;
+		String yString = "";
+
+		trString = trString.replaceAll(",", " ");
+		trString = trString.replaceAll("\\s{2,}", " ");
+		int startCurrIndex = trString.indexOf(functionName + "(");
+		int endCurrIndex;
+		// If the function has y coordinate
+		if(trString.indexOf(" ",startCurrIndex) != -1 && trString.indexOf(" ",startCurrIndex) < trString.indexOf(")",startCurrIndex))
+		{
+			endCurrIndex = trString.indexOf(" ",startCurrIndex);
+			xString = trString.substring(startCurrIndex + functionName.length() + 1, endCurrIndex);
+
+			startCurrIndex = endCurrIndex + 1;
+			endCurrIndex = trString.indexOf(")",startCurrIndex);
+			yString = trString.substring(startCurrIndex, endCurrIndex);
+		}
+		else
+		{
+			endCurrIndex = trString.indexOf(")",startCurrIndex);
+			xString = trString.substring(startCurrIndex + functionName.length() + 1, endCurrIndex);
+		}
+
+		Double[] result = null;
+		if(!xString.equals(""))
+		{
+			x = Double.valueOf(xString);
+			if(!yString.equals(""))
+			{
+				y = Double.valueOf(yString);
+				result = new Double[] {x, y};
+			}
+			else
+			{
+				result = new Double[] {x};
+			}
+		}
+
+		return result;
+	}
+
+	public static Double[] getRotationFromTransform(Element element){
+		String trString = element.getAttribute("transform");
+
+		if(trString == null || !trString.contains("rotate"))
+		{
+			return null;
+		}
+
+		Double[] result = null;
+
+		double a; // Rotation degrees
+		double x; // Rotation origin X
+		double y; // Rotation origin Y
+		String aString;
+		String xString = "";
+		String yString = "";
+
+		trString = trString.replaceAll(",", " ");
+		trString = trString.replaceAll("\\s{2,}", " ");
+		int startCurrIndex = trString.indexOf("rotate(");
+		int endCurrIndex;
+		// If the function has x and y coordinates
+		if(trString.indexOf(" ",startCurrIndex) != -1 && trString.indexOf(" ",startCurrIndex) < trString.indexOf(")",startCurrIndex))
+		{
+			endCurrIndex = trString.indexOf(" ",startCurrIndex);
+			aString = trString.substring(startCurrIndex + 7, endCurrIndex);
+
+			startCurrIndex = endCurrIndex + 1;
+			endCurrIndex = trString.indexOf(" ",startCurrIndex);
+			xString = trString.substring(startCurrIndex, endCurrIndex);
+
+			startCurrIndex = endCurrIndex + 1;
+			endCurrIndex = trString.indexOf(")",startCurrIndex);
+			yString = trString.substring(startCurrIndex, endCurrIndex);
+		}
+		else
+		{
+			endCurrIndex = trString.indexOf(")",startCurrIndex);
+			aString = trString.substring(startCurrIndex + 7, endCurrIndex);
+		}
+
+		if(!aString.equals(""))
+		{
+			a = Double.valueOf(aString);
+			if(!xString.equals("") && !yString.equals(""))
+			{
+				x = Double.valueOf(xString);
+				y = Double.valueOf(yString);
+				result = new Double[] {a, x, y};
+			}
+			else
+			{
+				result = new Double[] {a};
+			}
+		}
+
+		return result;
+	}
+
+	public static Double getSkewFromTransform(Element element, boolean isX)
+	{
+		String trString = element.getAttribute("transform");
+
+		if(trString == null || !trString.contains("skew"))
+		{
+			return null;
+		}
+
+		Double result = null;
+		String skewString;
+		int startCurrIndex = trString.indexOf("skew" + (isX ? "X" : "Y") + "(");
+		int endCurrIndex = trString.indexOf(")",startCurrIndex);
+		skewString = trString.substring(startCurrIndex + 6, endCurrIndex);
+
+		if(!skewString.equals("")){
+			result = Double.valueOf(skewString);
+		}
+
+		return result;
+	}
+
+	public static Double[] getMatrixFromTransform(Element element)
 	{
 		String trString = element.getAttribute("transform");
 

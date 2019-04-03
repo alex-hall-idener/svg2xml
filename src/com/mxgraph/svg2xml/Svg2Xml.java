@@ -601,13 +601,11 @@ public class Svg2Xml
 				e.printStackTrace();
 			}
 		}
-
 	}
 
 	/**
 	 * Checks if a shape is filled and/or stroked
 	 * @param currStyle
-	 * @param defStyle
 	 * @return <b>"stroke"</b> or <b>"fillstroke"</b>, eventually null for none
 	 */
 	static String getStrokeString(XmlStyle currStyle)
@@ -1663,12 +1661,15 @@ public class Svg2Xml
 					Element el = (Element) currChild;
 					setSvgStyle(el, currStyle);
 
-					//TODO merge possible transform matrices
-					if(parTr.contains("matrix"))
-					{
+					if(!"".equals(parTr)){
+						//TODO merge possible transform matrices
+
 						Element currEl = (Element) currChild;
 						String currTr = currEl.getAttribute("transform");
 
+						currEl.setAttribute("transform", combineTransform(parTr, currTr, i).trim());
+
+						/*
 						if(currTr.contains("matrix"))
 						{
 							//combine matrices
@@ -1679,6 +1680,8 @@ public class Svg2Xml
 							//copy group matrix
 							currEl.setAttribute("transform", parTr);
 						}
+						*/
+
 					}
 
 					if (currChild.getNodeName().equals("g"))
@@ -2097,7 +2100,7 @@ public class Svg2Xml
 	 * @param destDoc the backbone is created in destDoc 
 	 * @param destConfigDoc configuration of the destination doc
 	 * @param srcSVGDoc 
-	 * @param shapeName name of the stencil
+	 * @param stencilName name of the stencil
 	 */
 	private static void createBackbone(Document destDoc, XmlConfig destConfigDoc, String stencilName, Document srcSVGDoc, ArrayList <Constraint> svgConnections)
 	{
@@ -2200,6 +2203,158 @@ public class Svg2Xml
 		}
 
 		return null;
+	}
+
+	/**
+	 * Gets the specified definition (translate, matrix, rotate, scale, etc) from the transform string
+	 * @param transform
+	 * @param definition
+	 * @return
+	 */
+	private static String getTransformDefinition(String transform, String definition){
+		String res = "";
+
+		int start = transform.indexOf(definition);
+		int end = transform.indexOf(')', start);
+
+		if(start != -1 && end != -1){
+			res = transform.substring(start, end + 1);
+		}
+
+		return res;
+	}
+
+	//TODO: Combine skewX and skewY
+	/**
+	 * Combine transform attributes into a single string
+	 * @param transform1
+	 * @param transform2
+	 * @param roundDec decimals to round to
+	 * @return
+	 */
+	private static String combineTransform(String transform1, String transform2, int roundDec)
+	{
+		String resMatrix = "";
+		String resTranslate = "";
+		String resScale = "";
+		String resRotate = "";
+		String resSkewX;
+		String resSkewY;
+
+		if(transform1.contains("matrix") && transform2.contains("matrix")){
+			resMatrix = multiplyStringMatrices(getTransformDefinition(transform1, "matrix"), getTransformDefinition(transform2, "matrix"), roundDec);
+		}
+		else{
+			resMatrix = transform1.contains("matrix") ? getTransformDefinition(transform1, "matrix") : getTransformDefinition(transform2, "matrix");
+		}
+
+		if(transform1.contains("translate") && transform2.contains("translate")){
+			resTranslate = "translate(" + combinePoint(getTransformDefinition(transform1, "translate"), getTransformDefinition(transform2, "translate")) + ")";
+		}
+		else{
+			resTranslate = (transform1.contains("translate") ? getTransformDefinition(transform1, "translate") : getTransformDefinition(transform2, "translate")).replace(',',' ');
+		}
+
+		if(transform1.contains("scale") && transform2.contains("scale")){
+			resScale = "scale(" + combinePoint(getTransformDefinition(transform1, "scale"), getTransformDefinition(transform2, "scale")) + ")";
+		}
+		else{
+			resScale = (transform1.contains("scale") ? getTransformDefinition(transform1, "scale") : getTransformDefinition(transform2, "scale")).replace(',',' ');
+		}
+
+		if(transform1.contains("rotate") && transform2.contains("rotate")){
+			resRotate = "rotate(" + combineRotate(getTransformDefinition(transform1, "rotate"), getTransformDefinition(transform2, "rotate")) + ")";
+		}
+		else{
+			resRotate = (transform1.contains("rotate") ? getTransformDefinition(transform1, "rotate") : getTransformDefinition(transform2, "rotate")).replace(',',' ');
+		}
+
+		if(transform1.contains("skewX") && transform2.contains("skewX")){
+			resSkewX = "skewX" + combineDegrees(getTransformDefinition(transform1, "skewX"), getTransformDefinition(transform2, "skewX")) + ")";
+		}
+		else{
+			resSkewX = (transform1.contains("skewX") ? getTransformDefinition(transform1, "skewX") : getTransformDefinition(transform2, "skewX")).replace(',',' ');
+		}
+
+		if(transform1.contains("skewY") && transform2.contains("skewY")){
+			resSkewY = "skewY" + combineDegrees(getTransformDefinition(transform1, "skewY"), getTransformDefinition(transform2, "skewY")) + ")";
+		}
+		else{
+			resSkewY = (transform1.contains("skewY") ? getTransformDefinition(transform1, "skewY") : getTransformDefinition(transform2, "skewY")).replace(',',' ').replace(',',' ');
+		}
+
+		return resMatrix + " " + resTranslate + " " + resScale + " " + resRotate + " " + resSkewX + " " + resSkewY;
+	}
+
+	/**
+	 * Combines the points from a translate or scale definition
+	 * @param point1
+	 * @param point2
+	 * @return
+	 */
+	private static String combinePoint(String point1, String point2){
+		String res;
+
+		String[] coords1 = point1.substring(point1.indexOf('(') + 1, point1.indexOf(')')).split(",|, | ");
+		String[] coords2 = point2.substring(point2.indexOf('(') + 1, point2.indexOf(')')).split(",|, | ");
+
+		// translate(<x> [<y>])
+		// scale(<x> [<y>])
+		// Sum the coordinates accordingly (coords1[0] with coords2[0], checking before doing coords1[1] with coords2[1])
+		String y = "";
+		if(coords1.length > 1 && coords2.length > 1){
+			y = " " + (Double.parseDouble(coords1[1]) + Double.parseDouble(coords2[1]));
+		} else if (coords1.length > 1) {
+			y = " " + coords1[1];
+		} else if(coords2.length > 1){
+			y = " " + coords2[1];
+		}
+		res = (Double.parseDouble(coords1[0]) + Double.parseDouble(coords2[0])) + y;
+
+		return res;
+	}
+
+	/**
+	 * Combines the degrees of a skewX or a skewY definition
+	 * @param degrees1
+	 * @param degrees2
+	 * @return
+	 */
+	private static String combineDegrees(String degrees1, String degrees2){
+		String coords1 = degrees1.substring(degrees1.indexOf('(') + 1, degrees1.indexOf(')'));
+		String coords2 = degrees2.substring(degrees2.indexOf('(') + 1, degrees2.indexOf(')'));
+
+		// skewX(<a>)
+		// skewY(<a>)
+		return (Double.parseDouble(coords1) + Double.parseDouble(coords2)) + "";
+	}
+
+	/**
+	 * Combines two rotate definitions
+	 * @param rotate1
+	 * @param rotate2
+	 * @return
+	 */
+	private static String combineRotate(String rotate1, String rotate2){
+		String res;
+
+		String[] coords1 = rotate1.substring(rotate1.indexOf('(') + 1, rotate1.indexOf(')')).split(",|, | ");
+		String[] coords2 = rotate2.substring(rotate2.indexOf('(') + 1, rotate2.indexOf(')')).split(",|, | ");
+
+		// rotate(<a> [<x> <y>])
+		String xy = "";
+		// Sum the x y coordinates if they exist
+		if(coords1.length > 2 && coords2.length > 2){
+			xy = " " + (Double.parseDouble(coords1[1]) + Double.parseDouble(coords2[1])) + " " + (Double.parseDouble(coords1[2]) + Double.parseDouble(coords2[2]));
+		} else if (coords1.length > 2) {
+			xy = " " + coords1[1] + " " + coords1[2];
+		} else if(coords2.length > 2){
+			xy = " " + coords2[1] + " " + coords2[2];
+		}
+
+		res = (Double.parseDouble(coords1[0]) + Double.parseDouble(coords2[0])) + xy;
+
+		return res;
 	}
 
 	/**
