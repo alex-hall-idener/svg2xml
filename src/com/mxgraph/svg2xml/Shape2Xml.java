@@ -126,7 +126,7 @@ public class Shape2Xml
 
 			String pathString =  "M " + x1 + " " + y1 + " L " + x2 + " " + y2;
 
-			pathString = transformPath(pathString, tr, null, null, null, null, null, configDoc);
+			pathString = transformPath(pathString, tr, trTranslate, trScale, trRotate, trSkewX, trSkewY, configDoc);
 			double dx = configDoc.getStencilBoundsMinX();
 			double dy = configDoc.getStencilBoundsMinY();
 			pathString = transformPath(pathString, new Double[]{1.0, 0.0, 0.0, 1.0, -dx, -dy}, null, null, null, null, null, configDoc);
@@ -319,7 +319,7 @@ public class Shape2Xml
 			}
 			else
 			{
-				//untransformed circle/ellipse
+				// circle/ellipse without matrix transform
 				Element ellipse = xmlDoc.createElement("ellipse");
 
 				int rd = configDoc.getDecimalsToRound();
