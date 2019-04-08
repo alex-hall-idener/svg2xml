@@ -62,7 +62,7 @@ public class Constraint
 	
 	public void setName(String name) 
 	{
-		name = name.replaceAll(" ", "");
+		//name = name.replaceAll(" ", "");
 		this.name = name;
 	}
 }
